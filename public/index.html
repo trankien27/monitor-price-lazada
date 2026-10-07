@@ -47,7 +47,7 @@
       <form id="product-form">
         <label>Tên gợi nhớ<input id="name" required placeholder="Ví dụ: Giày Li-Ning"></label>
         <label>URL Lazada<input id="url" required type="url" placeholder="https://www.lazada.vn/products/..."></label>
-        <label>Giá mục tiêu<input id="targetPrice" type="number" min="1000" step="1000" placeholder="Không bắt buộc"></label>
+        <label>Giá mục tiêu (₫)<input id="targetPrice" type="text" inputmode="numeric" autocomplete="off" placeholder="Ví dụ: 400.000"></label>
         <button class="primary" type="submit">Thêm vào danh sách</button>
       </form>
       <div id="message"></div>
@@ -83,6 +83,11 @@
     }
     const money = value => value ? new Intl.NumberFormat('vi-VN').format(value) + ' ₫' : 'Chưa đặt';
     const time = value => value ? new Date(value).toLocaleString('vi-VN') : 'Chưa quét';
+    const targetInput = document.querySelector('#targetPrice');
+    targetInput.addEventListener('input', () => {
+      const digits = targetInput.value.replace(/\D/g, '');
+      targetInput.value = digits ? new Intl.NumberFormat('vi-VN').format(Number(digits)) : '';
+    });
 
     async function load() {
       try {
@@ -115,7 +120,7 @@
         await api('/api/products', { method: 'POST', body: JSON.stringify({
           name: document.querySelector('#name').value,
           url: document.querySelector('#url').value,
-          targetPrice: document.querySelector('#targetPrice').value
+          targetPrice: targetInput.value.replace(/\D/g, '')
         }) });
         event.target.reset(); message.className = 'success'; message.textContent = 'Đã lưu sản phẩm. Monitor sẽ nhận ở vòng quét tiếp theo.'; load();
       } catch (error) { message.className = 'error'; message.textContent = error.message; }
