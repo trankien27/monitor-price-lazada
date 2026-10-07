@@ -1,5 +1,4 @@
-# Change this to a globally unique Fly app name before the first deploy.
-app = "monitor-laz-change-me"
+app = "monitor-price-lazada-trankien27"
 primary_region = "sin"
 
 [build]

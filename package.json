@@ -1,0 +1,20 @@
+{
+  "name": "monitor-laz",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Theo doi gia Lazada bang Playwright va gui canh bao Telegram",
+  "scripts": {
+    "start": "node src/index.js",
+    "once": "node src/index.js --once",
+    "test:telegram": "node src/index.js --test-telegram",
+    "test": "node --test"
+  },
+  "dependencies": {
+    "dotenv": "^17.2.3",
+    "playwright": "^1.55.1"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

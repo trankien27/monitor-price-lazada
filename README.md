@@ -64,3 +64,16 @@ fly logs
 Mặc định Fly dùng region `sin`, 1 GB RAM và luôn giữ một Machine chạy để lịch theo dõi không bị ngủ. `products.json` được đóng gói trong image. Nếu không muốn lưu sản phẩm trong image, có thể đặt secret `MONITOR_PRODUCTS_JSON` bằng toàn bộ mảng JSON.
 
 Lưu ý: ứng dụng không tự vượt CAPTCHA. Giá hiển thị có thể phụ thuộc vào phân loại, voucher, tài khoản và địa chỉ giao hàng.
+
+## Bản Node.js
+
+Repository vẫn giữ bản Playwright Node.js để chạy độc lập tại máy:
+
+```powershell
+npm install
+npx playwright install chromium
+npm run once
+npm start
+```
+
+Node.js dùng chung `.env` và `products.json` với backend C#. Bản deploy Fly.io hiện sử dụng backend C# trong `src/MonitorLaz.Api`.
