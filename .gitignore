@@ -4,6 +4,7 @@ data/
 playwright-profile/
 npm-debug.log*
 monitor*.log
+iis*.log
 src/**/bin/
 src/**/obj/
 artifacts/
