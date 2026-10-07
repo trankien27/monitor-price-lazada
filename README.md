@@ -77,3 +77,7 @@ npm start
 ```
 
 Node.js dùng chung `.env` và `products.json` với backend C#. Bản deploy Fly.io hiện sử dụng backend C# trong `src/MonitorLaz.Api`.
+
+## Deploy IIS
+
+Backend C# phục vụ trực tiếp dashboard và API quản lý sản phẩm. Xem [IIS-DEPLOY.md](IIS-DEPLOY.md) để tạo IIS site. Gói build cục bộ nằm tại `artifacts/MonitorLaz-IIS.zip` và không được đưa lên Git.

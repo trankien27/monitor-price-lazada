@@ -10,5 +10,6 @@
   </ItemGroup>
   <ItemGroup>
     <Content Include="..\..\products.json" Link="products.json" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="..\..\public\**\*" Link="wwwroot\%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>

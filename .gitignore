@@ -6,3 +6,4 @@ npm-debug.log*
 monitor*.log
 src/**/bin/
 src/**/obj/
+artifacts/

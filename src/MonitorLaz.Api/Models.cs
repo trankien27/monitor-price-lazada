@@ -4,7 +4,8 @@ public sealed record ProductOptions(
     string Name,
     string Url,
     decimal? TargetPrice = null,
-    bool Enabled = true);
+    bool Enabled = true,
+    string? Id = null);
 
 public sealed record ProductStatus(
     string Name,
@@ -38,5 +39,10 @@ public sealed class MonitorState
                 serverTime = DateTimeOffset.UtcNow
             };
         }
+    }
+
+    public IReadOnlyDictionary<string, ProductStatus> SnapshotMap()
+    {
+        lock (_gate) return new Dictionary<string, ProductStatus>(_products);
     }
 }

@@ -7,9 +7,9 @@ namespace MonitorLaz.Api;
 
 public sealed partial class LazadaMonitorService(
     ILogger<LazadaMonitorService> logger,
-    IWebHostEnvironment environment,
     TelegramClient telegram,
-    MonitorState state) : BackgroundService
+    MonitorState state,
+    ProductStore productStore) : BackgroundService
 {
     private static readonly string[] PriceSelectors =
     [
@@ -25,7 +25,6 @@ public sealed partial class LazadaMonitorService(
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        var products = await LoadProductsAsync(stoppingToken);
         var interval = TimeSpan.FromMinutes(ReadInt("CHECK_INTERVAL_MINUTES", 5, 1));
 
         using var playwright = await Playwright.CreateAsync();
@@ -35,10 +34,11 @@ public sealed partial class LazadaMonitorService(
             Args = ["--disable-dev-shm-usage", "--no-sandbox"]
         });
 
-        logger.LogInformation("Monitoring {Count} product(s) every {Minutes} minute(s)", products.Count, interval.TotalMinutes);
+        logger.LogInformation("Monitoring products every {Minutes} minute(s)", interval.TotalMinutes);
 
         while (!stoppingToken.IsCancellationRequested)
         {
+            var products = await productStore.GetAsync(stoppingToken);
             foreach (var product in products.Where(product => product.Enabled))
             {
                 await CheckProductAsync(
@@ -56,7 +56,7 @@ public sealed partial class LazadaMonitorService(
         ProductOptions product,
         CancellationToken cancellationToken)
     {
-        var key = product.Url;
+        var key = product.Id ?? product.Url;
         var previous = state.Get(key);
         await using var context = await browser.NewContextAsync(new()
         {
@@ -144,34 +144,6 @@ public sealed partial class LazadaMonitorService(
         return decimal.TryParse(digits, NumberStyles.None, CultureInfo.InvariantCulture, out var price) && price > 0
             ? price
             : null;
-    }
-
-    private async Task<List<ProductOptions>> LoadProductsAsync(CancellationToken cancellationToken)
-    {
-        var json = Environment.GetEnvironmentVariable("MONITOR_PRODUCTS_JSON");
-        if (string.IsNullOrWhiteSpace(json))
-        {
-            var candidates = new[]
-            {
-                Path.Combine(environment.ContentRootPath, "products.json"),
-                Path.Combine(Directory.GetCurrentDirectory(), "products.json"),
-                Path.Combine(AppContext.BaseDirectory, "products.json"),
-                Path.GetFullPath(Path.Combine(environment.ContentRootPath, "..", "..", "products.json"))
-            };
-            var path = candidates.FirstOrDefault(File.Exists)
-                ?? throw new FileNotFoundException("products.json was not found and MONITOR_PRODUCTS_JSON is empty");
-            json = await File.ReadAllTextAsync(path, cancellationToken);
-        }
-
-        var products = JsonSerializer.Deserialize<List<ProductOptions>>(json, new JsonSerializerOptions
-        {
-            PropertyNameCaseInsensitive = true
-        });
-        if (products is null || products.Count == 0)
-            throw new InvalidOperationException("At least one product must be configured");
-        if (products.Any(product => !Uri.TryCreate(product.Url, UriKind.Absolute, out var uri) || !uri.Host.EndsWith("lazada.vn")))
-            throw new InvalidOperationException("Every product URL must belong to lazada.vn");
-        return products;
     }
 
     private static string CleanUrl(string rawUrl)
