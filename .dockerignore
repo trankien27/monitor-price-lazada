@@ -1,0 +1,9 @@
+.env
+.git
+.codegraph
+node_modules
+playwright-profile
+data
+monitor.*.log
+**/bin
+**/obj
