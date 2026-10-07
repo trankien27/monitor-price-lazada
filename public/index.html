@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Monitor Lazada</title>
+  <style>
+    :root { color-scheme: light; font-family: Inter, system-ui, sans-serif; background: #f5f6f8; color: #1d2433; }
+    * { box-sizing: border-box; }
+    body { margin: 0; }
+    header { background: linear-gradient(120deg, #0f146d, #6326a2); color: white; padding: 32px 20px; }
+    header div, main { width: min(1050px, calc(100% - 32px)); margin: auto; }
+    h1 { margin: 0 0 7px; font-size: clamp(25px, 4vw, 38px); }
+    header p { margin: 0; opacity: .82; }
+    main { display: grid; gap: 20px; padding: 24px 0 48px; }
+    .panel { background: white; border: 1px solid #e3e6ec; border-radius: 16px; padding: 20px; box-shadow: 0 8px 30px #18213a0d; }
+    .panel h2 { margin: 0 0 16px; font-size: 19px; }
+    form { display: grid; grid-template-columns: 1fr 1.5fr .7fr auto; gap: 12px; align-items: end; }
+    label { display: grid; gap: 6px; font-size: 13px; font-weight: 650; color: #4c5567; }
+    input { width: 100%; border: 1px solid #cfd4df; border-radius: 9px; padding: 11px 12px; font: inherit; }
+    input:focus { outline: 3px solid #5e39c51e; border-color: #6039c7; }
+    button { border: 0; border-radius: 9px; padding: 11px 16px; font: inherit; font-weight: 700; cursor: pointer; }
+    .primary { color: white; background: #f4511e; }
+    .secondary { background: #eef0f5; color: #323a49; }
+    .danger { background: #fff0ef; color: #c6302c; }
+    .toolbar { display: flex; gap: 10px; justify-content: space-between; align-items: center; margin-bottom: 14px; }
+    .key { max-width: 260px; }
+    #message { min-height: 22px; margin: 10px 0 0; font-size: 14px; }
+    .error { color: #bd2824; } .success { color: #18794e; }
+    .list { display: grid; gap: 10px; }
+    .product { display: grid; grid-template-columns: 1fr auto; gap: 14px; border: 1px solid #e3e6ec; border-radius: 12px; padding: 15px; }
+    .product h3 { margin: 0 0 7px; font-size: 16px; }
+    .meta { display: flex; flex-wrap: wrap; gap: 8px 18px; font-size: 13px; color: #667085; }
+    .url { display: block; color: #4f3ab0; max-width: 680px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-top: 8px; font-size: 13px; }
+    .actions { display: flex; gap: 7px; align-items: center; }
+    .badge { display: inline-block; border-radius: 99px; padding: 3px 8px; font-size: 12px; font-weight: 700; background: #e8f7ef; color: #18794e; }
+    .badge.off { background: #eef0f5; color: #667085; }
+    .empty { text-align: center; color: #7b8494; padding: 30px; }
+    @media (max-width: 780px) { form { grid-template-columns: 1fr; } .product { grid-template-columns: 1fr; } .actions { justify-content: flex-end; } }
+  </style>
+</head>
+<body>
+  <header><div><h1>Monitor giá Lazada</h1><p>Thêm sản phẩm một lần, hệ thống tự quét và gửi Telegram khi giá giảm.</p></div></header>
+  <main>
+    <section class="panel">
+      <h2>Thêm sản phẩm</h2>
+      <form id="product-form">
+        <label>Tên gợi nhớ<input id="name" required placeholder="Ví dụ: Giày Li-Ning"></label>
+        <label>URL Lazada<input id="url" required type="url" placeholder="https://www.lazada.vn/products/..."></label>
+        <label>Giá mục tiêu<input id="targetPrice" type="number" min="1" step="1000" placeholder="Không bắt buộc"></label>
+        <button class="primary" type="submit">Thêm vào danh sách</button>
+      </form>
+      <div id="message"></div>
+    </section>
+
+    <section class="panel">
+      <div class="toolbar">
+        <h2 style="margin:0">Sản phẩm đang theo dõi</h2>
+        <input class="key" id="adminKey" type="password" placeholder="Khóa quản trị (nếu có)">
+      </div>
+      <div id="products" class="list"><div class="empty">Đang tải…</div></div>
+    </section>
+  </main>
+  <script>
+    const list = document.querySelector('#products');
+    const message = document.querySelector('#message');
+    const keyInput = document.querySelector('#adminKey');
+    keyInput.value = sessionStorage.getItem('adminKey') || '';
+    keyInput.addEventListener('change', () => { sessionStorage.setItem('adminKey', keyInput.value); load(); });
+
+    function headers(json = false) {
+      const value = { 'x-admin-key': keyInput.value };
+      if (json) value['content-type'] = 'application/json';
+      return value;
+    }
+    async function api(url, options = {}) {
+      const response = await fetch(url, { ...options, headers: { ...headers(Boolean(options.body)), ...options.headers } });
+      if (!response.ok) {
+        const body = await response.json().catch(() => ({}));
+        throw new Error(body.error || `Lỗi HTTP ${response.status}`);
+      }
+      return response.status === 204 ? null : response.json();
+    }
+    const money = value => value ? new Intl.NumberFormat('vi-VN').format(value) + ' ₫' : 'Chưa đặt';
+    const time = value => value ? new Date(value).toLocaleString('vi-VN') : 'Chưa quét';
+
+    async function load() {
+      try {
+        const [products, status] = await Promise.all([api('/api/products'), api('/api/status')]);
+        list.replaceChildren();
+        if (!products.length) list.innerHTML = '<div class="empty">Chưa có sản phẩm nào.</div>';
+        for (const product of products) {
+          const latest = status[product.id] || status[product.url] || {};
+          const item = document.createElement('article');
+          item.className = 'product';
+          const info = document.createElement('div');
+          const title = document.createElement('h3'); title.textContent = product.name;
+          const meta = document.createElement('div'); meta.className = 'meta';
+          meta.innerHTML = `<span class="badge ${product.enabled ? '' : 'off'}">${product.enabled ? 'Đang quét' : 'Đã tắt'}</span><span>Hiện tại: <strong>${money(latest.price)}</strong></span><span>Mục tiêu: <strong>${money(product.targetPrice)}</strong></span><span>${time(latest.checkedAt)}</span>`;
+          const link = document.createElement('a'); link.className = 'url'; link.href = product.url; link.target = '_blank'; link.rel = 'noreferrer'; link.textContent = product.url;
+          info.append(title, meta, link);
+          const actions = document.createElement('div'); actions.className = 'actions';
+          const toggle = document.createElement('button'); toggle.className = 'secondary'; toggle.textContent = product.enabled ? 'Tạm dừng' : 'Bật lại';
+          toggle.onclick = async () => { await api(`/api/products/${product.id}`, { method: 'PUT', body: JSON.stringify({ ...product, enabled: !product.enabled }) }); load(); };
+          const remove = document.createElement('button'); remove.className = 'danger'; remove.textContent = 'Xóa';
+          remove.onclick = async () => { if (confirm(`Xóa ${product.name}?`)) { await api(`/api/products/${product.id}`, { method: 'DELETE' }); load(); } };
+          actions.append(toggle, remove); item.append(info, actions); list.append(item);
+        }
+      } catch (error) { list.innerHTML = `<div class="empty error">${error.message}</div>`; }
+    }
+
+    document.querySelector('#product-form').addEventListener('submit', async event => {
+      event.preventDefault(); message.textContent = '';
+      try {
+        await api('/api/products', { method: 'POST', body: JSON.stringify({
+          name: document.querySelector('#name').value,
+          url: document.querySelector('#url').value,
+          targetPrice: document.querySelector('#targetPrice').value
+        }) });
+        event.target.reset(); message.className = 'success'; message.textContent = 'Đã lưu sản phẩm. Monitor sẽ nhận ở vòng quét tiếp theo.'; load();
+      } catch (error) { message.className = 'error'; message.textContent = error.message; }
+    });
+    load(); setInterval(load, 15000);
+  </script>
+</body>
+</html>

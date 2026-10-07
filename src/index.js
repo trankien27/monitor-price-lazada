@@ -1,7 +1,9 @@
 import "dotenv/config";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { randomUUID } from "node:crypto";
+import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
 import process from "node:process";
+import express from "express";
 import { chromium } from "playwright";
 import { extractPrice, formatVnd } from "./price.js";
 import { sendTelegram } from "./telegram.js";
@@ -37,6 +39,12 @@ async function saveState(state) {
   await writeFile(statePath, `${JSON.stringify(state, null, 2)}\n`, "utf8");
 }
 
+async function saveProducts(products) {
+  const temporaryPath = `${productsPath}.tmp`;
+  await writeFile(temporaryPath, `${JSON.stringify(products, null, 2)}\n`, "utf8");
+  await rename(temporaryPath, productsPath);
+}
+
 function productKey(product) {
   return product.id || product.url;
 }
@@ -49,9 +57,7 @@ function cleanProductUrl(rawUrl) {
 }
 
 function validateProducts(products) {
-  if (!Array.isArray(products) || products.length === 0) {
-    throw new Error("products.json phai co it nhat 1 san pham");
-  }
+  if (!Array.isArray(products)) throw new Error("products.json phai la mot danh sach");
   for (const [index, product] of products.entries()) {
     if (!product.name || !product.url) {
       throw new Error(`San pham thu ${index + 1} thieu name hoac url`);
@@ -60,6 +66,100 @@ function validateProducts(products) {
       throw new Error(`URL cua '${product.name}' khong thuoc lazada.vn`);
     }
   }
+}
+
+function normalizeProduct(input, existingId) {
+  const name = String(input.name || "").trim();
+  const url = String(input.url || "").trim();
+  if (!name || !url) throw new Error("Ten va URL san pham la bat buoc");
+  const parsedUrl = new URL(url);
+  if (!parsedUrl.hostname.endsWith("lazada.vn")) {
+    throw new Error("URL phai thuoc lazada.vn");
+  }
+  const targetPrice = input.targetPrice === "" || input.targetPrice === null || input.targetPrice === undefined
+    ? null
+    : Number(input.targetPrice);
+  if (targetPrice !== null && (!Number.isFinite(targetPrice) || targetPrice <= 0)) {
+    throw new Error("Gia muc tieu khong hop le");
+  }
+  return {
+    id: existingId || randomUUID(),
+    name,
+    url,
+    targetPrice,
+    enabled: input.enabled !== false
+  };
+}
+
+async function ensureProductIds() {
+  const products = await readJson(productsPath, await readJson(legacyProductPath, []));
+  let changed = false;
+  const normalized = products.map((product) => {
+    if (product.id) return product;
+    changed = true;
+    return { ...product, id: randomUUID() };
+  });
+  if (changed || !(await readJson(productsPath, null))) await saveProducts(normalized);
+  return normalized;
+}
+
+function startWebServer() {
+  const app = express();
+  const port = Math.max(1, Number(process.env.PORT || 3000));
+  const adminKey = process.env.ADMIN_KEY || "";
+  app.use(express.json({ limit: "32kb" }));
+  app.use(express.static(path.join(root, "public")));
+
+  app.use("/api", (request, response, next) => {
+    if (!adminKey || request.headers["x-admin-key"] === adminKey) return next();
+    return response.status(401).json({ error: "Khoa quan tri khong dung" });
+  });
+
+  app.get("/api/products", async (_request, response, next) => {
+    try {
+      response.json(await ensureProductIds());
+    } catch (error) { next(error); }
+  });
+  app.get("/api/status", async (_request, response, next) => {
+    try {
+      response.json(await readJson(statePath, {}));
+    } catch (error) { next(error); }
+  });
+  app.post("/api/products", async (request, response, next) => {
+    try {
+      const products = await ensureProductIds();
+      const product = normalizeProduct(request.body);
+      products.push(product);
+      await saveProducts(products);
+      response.status(201).json(product);
+    } catch (error) { next(error); }
+  });
+  app.put("/api/products/:id", async (request, response, next) => {
+    try {
+      const products = await ensureProductIds();
+      const index = products.findIndex((product) => product.id === request.params.id);
+      if (index < 0) return response.status(404).json({ error: "Khong tim thay san pham" });
+      products[index] = normalizeProduct(request.body, products[index].id);
+      await saveProducts(products);
+      response.json(products[index]);
+    } catch (error) { next(error); }
+  });
+  app.delete("/api/products/:id", async (request, response, next) => {
+    try {
+      const products = await ensureProductIds();
+      const filtered = products.filter((product) => product.id !== request.params.id);
+      if (filtered.length === products.length) return response.status(404).json({ error: "Khong tim thay san pham" });
+      await saveProducts(filtered);
+      response.status(204).end();
+    } catch (error) { next(error); }
+  });
+  app.use((error, _request, response, _next) => {
+    console.error(`API loi: ${error.message}`);
+    response.status(400).json({ error: error.message });
+  });
+  return app.listen(port, "0.0.0.0", () => {
+    console.log(`Dashboard: http://localhost:${port}`);
+  });
 }
 
 async function notify(text) {
@@ -132,7 +232,7 @@ async function main() {
     return;
   }
 
-  const products = await readJson(productsPath, await readJson(legacyProductPath, null));
+  const products = await ensureProductIds();
   if (!products) throw new Error("Chua co products.json hoac product.json");
   validateProducts(products);
   const state = await readJson(statePath, {});
@@ -143,8 +243,10 @@ async function main() {
     timezoneId: "Asia/Ho_Chi_Minh",
     viewport: { width: 1366, height: 900 }
   });
+  const server = startWebServer();
 
   const shutdown = async () => {
+    server.close();
     await context.close();
     process.exit(0);
   };
@@ -153,7 +255,9 @@ async function main() {
 
   try {
     do {
-      await runCheck(context, products, state);
+      const currentProducts = await ensureProductIds();
+      validateProducts(currentProducts);
+      await runCheck(context, currentProducts, state);
       if (process.argv.includes("--once")) break;
       console.log(`Lan kiem tra tiep theo sau ${intervalMinutes} phut.`);
       await new Promise((resolve) => setTimeout(resolve, intervalMinutes * 60_000));
