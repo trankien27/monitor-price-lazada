@@ -27,8 +27,6 @@ public sealed partial class LazadaMonitorService(
     {
         var products = await LoadProductsAsync(stoppingToken);
         var interval = TimeSpan.FromMinutes(ReadInt("CHECK_INTERVAL_MINUTES", 5, 1));
-        var notifyEveryCheck = ReadBool("NOTIFY_EVERY_CHECK", false);
-        var notifyOnFirstCheck = ReadBool("NOTIFY_ON_FIRST_CHECK", true);
 
         using var playwright = await Playwright.CreateAsync();
         await using var browser = await playwright.Chromium.LaunchAsync(new()
@@ -46,8 +44,6 @@ public sealed partial class LazadaMonitorService(
                 await CheckProductAsync(
                     browser,
                     product,
-                    notifyEveryCheck,
-                    notifyOnFirstCheck,
                     stoppingToken);
             }
 
@@ -58,8 +54,6 @@ public sealed partial class LazadaMonitorService(
     private async Task CheckProductAsync(
         IBrowser browser,
         ProductOptions product,
-        bool notifyEveryCheck,
-        bool notifyOnFirstCheck,
         CancellationToken cancellationToken)
     {
         var key = product.Url;
@@ -89,30 +83,20 @@ public sealed partial class LazadaMonitorService(
             var price = await ExtractPriceAsync(page)
                 ?? throw new InvalidOperationException("Could not find a price on the page");
             var now = DateTimeOffset.UtcNow;
-            var firstCheck = previous?.Price is null;
-            var changed = previous?.Price is not null && previous.Price != price;
             var reachedTarget = product.TargetPrice is not null && price <= product.TargetPrice;
             var newlyReachedTarget = reachedTarget && (previous?.Price is null || previous.Price > product.TargetPrice);
 
             state.Update(key, new(product.Name, price, now, null));
             logger.LogInformation("{Product}: {Price}", product.Name, FormatVnd(price));
 
-            if (notifyEveryCheck || (firstCheck && notifyOnFirstCheck) || changed || newlyReachedTarget)
+            if (newlyReachedTarget)
             {
-                var heading = changed
-                    ? "🔔 Giá Lazada đã thay đổi"
-                    : reachedTarget
-                        ? "🎯 Giá Lazada đạt mức mong muốn"
-                        : firstCheck
-                            ? "✅ Bắt đầu theo dõi giá Lazada"
-                            : "🕒 Cập nhật giá Lazada định kỳ";
                 var lines = new List<string>
                 {
-                    heading,
+                    "🎯 Giá Lazada đạt mức mong muốn",
                     product.Name,
                     $"Giá hiện tại: {FormatVnd(price)}"
                 };
-                if (changed) lines.Add($"Giá trước: {FormatVnd(previous!.Price!.Value)}");
                 if (product.TargetPrice is not null)
                     lines.Add($"Mức cảnh báo: {FormatVnd(product.TargetPrice.Value)}");
                 lines.Add(CleanUrl(product.Url));

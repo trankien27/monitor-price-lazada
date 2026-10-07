@@ -8,8 +8,8 @@ primary_region = "sin"
   ASPNETCORE_ENVIRONMENT = "Production"
   ASPNETCORE_URLS = "http://0.0.0.0:8080"
   CHECK_INTERVAL_MINUTES = "1"
-  NOTIFY_ON_FIRST_CHECK = "true"
-  NOTIFY_EVERY_CHECK = "true"
+  NOTIFY_ON_FIRST_CHECK = "false"
+  NOTIFY_EVERY_CHECK = "false"
 
 [http_service]
   internal_port = 8080

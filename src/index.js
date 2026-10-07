@@ -187,26 +187,14 @@ async function runCheck(context, products, state) {
       console.log(`[${new Date().toLocaleString("vi-VN")}] Dang kiem tra: ${product.name}`);
       const { price, source } = await inspectProduct(page, product);
       const now = new Date().toISOString();
-      const firstCheck = !previous?.price;
-      const changed = previous?.price && previous.price !== price;
-      const reachedTarget = product.targetPrice && price <= product.targetPrice;
+      const reachedTarget = product.targetPrice != null && price <= product.targetPrice;
       const newlyReachedTarget = reachedTarget && (!previous?.price || previous.price > product.targetPrice);
       console.log(`  Gia: ${formatVnd(price)} (${source})`);
       state[key] = { price, checkedAt: now, source, lastError: null };
       await saveState(state);
 
-      const notifyFirst = envBoolean("NOTIFY_ON_FIRST_CHECK", true);
-      const notifyEveryCheck = process.argv.includes("--notify-every-check") || envBoolean("NOTIFY_EVERY_CHECK", false);
-      if (notifyEveryCheck || (firstCheck && notifyFirst) || changed || newlyReachedTarget) {
-        const heading = changed
-          ? "🔔 Gia Lazada da thay doi"
-          : reachedTarget
-            ? "🎯 Gia Lazada dat muc mong muon"
-            : firstCheck
-              ? "✅ Bat dau theo doi gia Lazada"
-              : "🕒 Cap nhat gia Lazada dinh ky";
-        const lines = [heading, product.name, `Gia hien tai: ${formatVnd(price)}`];
-        if (changed) lines.push(`Gia truoc: ${formatVnd(previous.price)}`);
+      if (newlyReachedTarget) {
+        const lines = ["🎯 Gia Lazada dat muc mong muon", product.name, `Gia hien tai: ${formatVnd(price)}`];
         if (product.targetPrice) lines.push(`Muc canh bao: ${formatVnd(product.targetPrice)}`);
         lines.push(cleanProductUrl(product.url));
         try {
